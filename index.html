@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bygg och utvärdera en AI-assistent</title>
+  <meta name="description" content="Arbetsyta för projektet Bygg och utvärdera en AI-assistent i AI nivå 2.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%234A7C2A'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Hoppa till innehållet</a>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <p class="site-name">AI nivå 2 · Arbetsyta</p>
+      <div class="status" aria-live="polite">
+        <span id="status-save">Laddar …</span>
+        <span id="status-export"></span>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidenav" aria-label="Projektets delar">
+      <details id="navmenu" open>
+        <summary>Meny</summary>
+        <ol id="navlist"></ol>
+      </details>
+    </nav>
+
+    <main id="main">
+      <noscript><p class="warning">Webbplatsen kräver JavaScript för att fungera. Aktivera JavaScript i webbläsaren.</p></noscript>
+
+      <!-- 1. START -->
+      <section id="s-start" data-title="Start" aria-labelledby="h-start">
+        <h1 id="h-start" tabindex="-1">Bygg och utvärdera en AI-assistent</h1>
+        <p class="lead">Ni ska utforma en AI-assistent som löser ett tydligt problem för en bestämd målgrupp. Ni ska skapa instruktioner, använda ett faktaunderlag, testa assistenten, upptäcka fel och förbättra lösningen. Webbplatsen hjälper er att dokumentera hela processen.</p>
+
+        <p class="warning" role="note"><strong>Varning:</strong> Arbetet sparas bara i den här webbläsaren tills du exporterar det. Exportera innan du byter webbläsare eller dator, och innan du rensar webbläsarens data.</p>
+
+        <div class="card">
+          <h2>Din framgång hittills</h2>
+          <p><progress id="overall-progress" max="8" value="0" aria-labelledby="overall-label"></progress></p>
+          <p id="overall-label"><strong id="overall-text">0 av 8 delar klara</strong></p>
+          <p class="hint">Delarna som räknas är: planering, faktaunderlag, instruktion, testlaboratorium, systemskiss och inlämningschecklista. Det här är ett stöd för dig, inte ett betyg.</p>
+        </div>
+
+        <div class="card">
+          <h2>Ditt arbete</h2>
+          <div class="button-row">
+            <button type="button" class="btn primary" data-act="save">Spara</button>
+            <button type="button" class="btn" data-act="export-json">Exportera arbete</button>
+            <button type="button" class="btn" data-act="import">Importera arbete</button>
+            <button type="button" class="btn danger" data-act="clear">Rensa arbete</button>
+          </div>
+          <input type="file" id="file-import" accept=".json,application/json" hidden>
+          <dl class="meta-list">
+            <dt>Senaste lokala autosparning</dt>
+            <dd class="js-last-save">Inte sparat än</dd>
+            <dt>Senaste export</dt>
+            <dd class="js-last-export">Inte exporterat än</dd>
+          </dl>
+          <p class="hint">Sidan autosparar medan du skriver. <strong>Spara</strong> sparar direkt i webbläsaren. <strong>Exportera arbete</strong> laddar ner en JSON-fil som är din säkerhetskopia. <strong>Importera arbete</strong> läser in en sådan fil igen.</p>
+        </div>
+
+        <h2>Projektets fyra huvudfrågor</h2>
+        <ol class="big-list">
+          <li>Vilket problem ska assistenten lösa?</li>
+          <li>Vilka ska använda den?</li>
+          <li>Hur ska ni kontrollera att svaren håller god kvalitet?</li>
+          <li>Vilka begränsningar och risker har lösningen?</li>
+        </ol>
+
+        <h2>Ord du kommer att möta</h2>
+        <dl class="glossary">
+          <dt>Prompt (instruktion)</dt>
+          <dd>Texten du skickar till en AI för att tala om vad den ska göra. En <em>systeminstruktion</em> är en prompt som styr hur assistenten beter sig i hela samtalet.</dd>
+          <dt>NLP</dt>
+          <dd>Förkortning för <em>natural language processing</em>. AI tolkar och bearbetar mänskligt språk.</dd>
+          <dt>Klassificering</dt>
+          <dd>Frågor eller data sorteras i kategorier, till exempel &quot;biljettfråga&quot; eller &quot;regelfråga&quot;.</dd>
+          <dt>Kvalitetssäkring</dt>
+          <dd>Att systematiskt kontrollera att något håller en bra nivå, här genom att testa assistenten och rätta fel.</dd>
+          <dt>Hallucination</dt>
+          <dd>När en AI hittar på information som låter rimlig men inte stämmer eller inte finns i underlaget.</dd>
+          <dt>Promptinjektion</dt>
+          <dd>När en användare försöker lura assistenten att strunta i sina regler, till exempel med &quot;Ignorera alla tidigare instruktioner&quot;.</dd>
+        </dl>
+      </section>
+
+      <!-- 2. UPPGIFTEN -->
+      <section id="s-uppgift" data-title="Uppgiften" aria-labelledby="h-uppgift" hidden>
+        <h2 id="h-uppgift" tabindex="-1">Uppgiften</h2>
+        <p class="lead">Ni arbetar i par och utformar en AI-assistent som löser ett tydligt problem för en bestämd målgrupp. Ni väljer själva tema, till exempel musikfestival, spelturnering, animekonvent, skolaktivitet eller fiktiv kundtjänst.</p>
+        <p>Assistenten kan till exempel svara på frågor, sortera frågor i kategorier, ge rekommendationer eller förklara regler utifrån ett avgränsat faktaunderlag.</p>
+
+        <div class="card">
+          <h3>Så här hänger det ihop</h3>
+          <p>Gruppen bygger assistenten i ett <strong>externt, godkänt AI-verktyg</strong>, till exempel Claude eller ChatGPT, i en separat flik. Den här webbplatsen är <strong>arbetsyta och dokumentation</strong>. Den är inte själva språkmodellen och skickar inget till någon AI.</p>
+          <p>Ni använder webbplatsen för att formulera instruktioner, samla faktaunderlag, dokumentera tester och exportera arbetet. Loggbok och reflektion skriver du i ditt eget arbetsdokument.</p>
+        </div>
+
+        <h3>Det här ska ni lämna in</h3>
+        <ul>
+          <li>en beskrivning av problemet</li>
+          <li>en målgruppsbeskrivning</li>
+          <li>ett faktaunderlag</li>
+          <li>minst två versioner av assistentens instruktion</li>
+          <li>minst sex dokumenterade testfall</li>
+          <li>en fel- och förbättringsanalys</li>
+          <li>en jämförelse mellan människa och AI</li>
+          <li>en risk- och konsekvensanalys</li>
+          <li>en systemskiss över relevanta AI-tekniker</li>
+          <li>individuell loggbok (i ditt arbetsdokument)</li>
+          <li>individuell reflektion (i ditt arbetsdokument)</li>
+        </ul>
+
+        <h3>Tid och arbetssätt</h3>
+        <p>Projektet pågår under cirka åtta lektioner à 80 minuter. Ni arbetar i par, men <strong>loggboken och reflektionen är individuella</strong>. Varje elev dokumenterar sitt eget bidrag i sitt eget arbetsdokument, inte på den här webbplatsen.</p>
+
+        <h3>Riktlinjer</h3>
+        <ul>
+          <li>Använd bara fiktiv information. Skriv aldrig in riktiga personuppgifter eller känsliga uppgifter, varken här eller i AI-verktyget.</li>
+          <li>Använd bara det AI-verktyg som skolan har godkänt.</li>
+          <li>Skriv ingen API-nyckel eller något lösenord på webbplatsen.</li>
+        </ul>
+
+        <h3>Så bedöms arbetet</h3>
+        <p class="hint">Sammanfattningen nedan är ett stöd för dig. Webbplatsen räknar inte ut något betyg.</p>
+        <div class="grade-grid">
+          <article class="card">
+            <h4>E-nivå</h4>
+            <p>Du kan:</p>
+            <ul>
+              <li>beskriva grundläggande AI-begrepp</li>
+              <li>använda AI för att lösa ett enkelt problem</li>
+              <li>genomföra enkla tester</li>
+              <li>göra en enkel jämförelse mellan människa och AI</li>
+              <li>resonera enkelt om risker, regler och konsekvenser</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h4>C-nivå</h4>
+            <p>Du kan dessutom:</p>
+            <ul>
+              <li>motivera dina metodval</li>
+              <li>testa lösningen mer systematiskt</li>
+              <li>analysera fel och förbättra lösningen</li>
+              <li>göra välgrundade jämförelser</li>
+              <li>föra utvecklade resonemang om risker och konsekvenser</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h4>A-nivå</h4>
+            <p>Du kan dessutom:</p>
+            <ul>
+              <li>diskutera styrkor och svagheter hos flera metoder</li>
+              <li>analysera begränsningar och osäkerhet nyanserat</li>
+              <li>göra välgrundade och nyanserade jämförelser</li>
+              <li>resonera utvecklat och nyanserat om risker, lagar och samhällskonsekvenser</li>
+            </ul>
+          </article>
+        </div>
+        <p class="notice"><strong>Viktigt:</strong> Gruppens webbplats avgör inte ensam ditt betyg. Din individuella loggbok och reflektion i arbetsdokumentet, samt den muntliga avstämningen, är viktiga delar av bedömningen.</p>
+      </section>
+
+      <!-- 3. PLANERA -->
+      <section id="s-plan" data-title="Planera assistenten" aria-labelledby="h-plan" hidden>
+        <h2 id="h-plan" tabindex="-1">Planera assistenten</h2>
+        <p class="lead">Bestäm vad assistenten ska göra innan ni skriver instruktionen. En tydlig plan gör det lättare att testa och förbättra senare.</p>
+        <div class="card example-card">
+          <h3>Exempel: en fiktiv festivalassistent</h3>
+          <p>Björkfestivalens infoassistent svarar på besökares frågor om program, biljetter, transport och regler. Den får bara använda festivalens faktaunderlag och hänvisar till infodisken när svaret saknas.</p>
+        </div>
+        <div id="plan-fields" class="fields"></div>
+      </section>
+
+      <!-- 4. FAKTAUNDERLAG -->
+      <section id="s-fakta" data-title="Faktaunderlag" aria-labelledby="h-fakta" hidden>
+        <h2 id="h-fakta" tabindex="-1">Faktaunderlag</h2>
+        <p class="lead">Faktaunderlaget är den information som assistenten får använda. Ett tydligt och avgränsat underlag gör det lättare att upptäcka när assistenten hittar på eller använder fel information.</p>
+        <p class="warning" role="note"><strong>Tänk på:</strong> Använd inga riktiga personuppgifter eller känsliga uppgifter. Hitta på namn, telefonnummer och e-postadresser.</p>
+        <div class="field">
+          <label for="f-facts">Ert faktaunderlag</label>
+          <p class="hint" id="h-facts">Skriv eller klistra in texten här. Har ni ett textdokument kan ni öppna det, kopiera texten och klistra in den. Tydliga rubriker och korta stycken fungerar bäst.</p>
+          <textarea id="f-facts" data-key="facts" rows="18" aria-describedby="h-facts facts-count"></textarea>
+          <p id="facts-count" class="counter">0 tecken</p>
+        </div>
+        <div class="button-row">
+          <button type="button" class="btn" id="btn-facts-example">Infoga exempelunderlag</button>
+          <button type="button" class="btn danger" id="btn-facts-clear">Rensa underlaget</button>
+        </div>
+      </section>
+
+      <!-- 5. INSTRUKTION -->
+      <section id="s-instruktion" data-title="Bygg instruktionen" aria-labelledby="h-instruktion" hidden>
+        <h2 id="h-instruktion" tabindex="-1">Bygg instruktionen</h2>
+        <p class="lead">En <strong>prompt</strong> är texten som talar om för AI:n vad den ska göra. Här bygger ni en <strong>systeminstruktion</strong> som styr hur hela assistenten beter sig. Fyll i en byggsten i taget så sätts instruktionen ihop automatiskt.</p>
+        <p class="notice">Kopiera instruktionen och faktaunderlaget till skolans godkända AI-verktyg. Testa sedan assistenten där och för tillbaka resultatet till testlaboratoriet.</p>
+
+        <div id="builder-fields" class="fields"></div>
+
+        <h3>Den färdiga instruktionen</h3>
+        <div class="field checkbox-field">
+          <input type="checkbox" id="f-include-facts" data-key="include_facts">
+          <label for="f-include-facts">Ta med faktaunderlaget i instruktionen (rekommenderas)</label>
+        </div>
+        <pre id="instruction-output" class="output" tabindex="0" aria-label="Färdig instruktion"></pre>
+        <div class="button-row">
+          <button type="button" class="btn primary" id="btn-copy-instr">Kopiera instruktion</button>
+          <button type="button" class="btn" id="btn-download-instr">Ladda ner instruktion</button>
+        </div>
+
+        <h3>Versioner av instruktionen</h3>
+        <p class="hint">Ni ska ha minst två versioner. Spara den första som version 1, testa den, förbättra byggstenarna och skapa sedan version 2. Ni kan redigera versionerna direkt i rutorna.</p>
+        <div class="button-row">
+          <button type="button" class="btn" id="btn-save-v1">Spara som version 1</button>
+          <button type="button" class="btn primary" id="btn-make-v2">Skapa version 2</button>
+        </div>
+        <div class="field">
+          <label for="f-v1">Instruktion version 1</label>
+          <textarea id="f-v1" data-key="v1" rows="10"></textarea>
+        </div>
+        <div class="field">
+          <label for="f-v2">Instruktion version 2</label>
+          <textarea id="f-v2" data-key="v2" rows="10"></textarea>
+        </div>
+        <div class="field">
+          <label for="f-v-changes">Vad ändrade ni mellan version 1 och version 2, och varför?</label>
+          <textarea id="f-v-changes" data-key="v_changes" rows="5"></textarea>
+        </div>
+      </section>
+
+      <!-- 6. TESTLAB -->
+      <section id="s-test" data-title="Testlaboratorium" aria-labelledby="h-test" hidden>
+        <h2 id="h-test" tabindex="-1">Testlaboratorium</h2>
+        <p class="lead">Här dokumenterar ni hur assistenten klarar olika situationer. Det är <strong>kvalitetssäkring</strong>: ni kontrollerar systematiskt att svaren är bra och letar efter fel. Att hitta fel är ett bra resultat, eftersom det visar vad som kan förbättras.</p>
+
+        <details class="card">
+          <summary>Förklaring av de sex testtyperna</summary>
+          <dl id="test-types-help" class="glossary"></dl>
+        </details>
+
+        <div class="button-row">
+          <button type="button" class="btn primary" id="btn-add-test">Lägg till testfall</button>
+          <button type="button" class="btn" id="btn-copy-tests">Kopiera testprotokoll</button>
+          <button type="button" class="btn" id="btn-export-tests">Exportera testprotokoll</button>
+        </div>
+
+        <div class="card" id="test-summary" aria-live="polite">
+          <h3>Sammanfattning</h3>
+          <p id="test-summary-text"></p>
+          <p class="hint">Ett testfall räknas som genomfört när fråga, förväntat svar, AI-svar och bedömning är ifyllda. Skriv frågan och det förväntade svaret innan ni frågar AI:n. Sammanfattningen är ingen bedömning av ert arbete.</p>
+        </div>
+
+        <div id="test-list"></div>
+      </section>
+
+      <!-- 7. LOGGBOK -->
+      <section id="s-logg" data-title="Loggbok" aria-labelledby="h-logg" hidden>
+        <h2 id="h-logg" tabindex="-1">Loggbok</h2>
+        <p class="lead">Loggboken är <strong>individuell</strong>, även när ni arbetar i par. Du skriver den i ditt eget arbetsdokument, inte här på webbplatsen.</p>
+        <div class="card">
+          <p class="notice"><strong>Påminnelse:</strong> Avsluta varje lektion med att fylla i din loggbok i ditt arbetsdokument, innan du lämnar lektionen.</p>
+        </div>
+
+        <div class="card">
+          <h3>Ditt arbete</h3>
+          <div class="button-row">
+            <button type="button" class="btn primary" data-act="save">Spara</button>
+            <button type="button" class="btn" data-act="export-json">Exportera arbete</button>
+            <button type="button" class="btn" data-act="import">Importera arbete</button>
+            <button type="button" class="btn danger" data-act="clear">Rensa arbete</button>
+          </div>
+          <dl class="meta-list">
+            <dt>Senaste lokala autosparning</dt>
+            <dd class="js-last-save">Inte sparat än</dd>
+            <dt>Senaste export</dt>
+            <dd class="js-last-export">Inte exporterat än</dd>
+          </dl>
+          <p class="hint">Glöm inte att spara och exportera gruppens arbete innan lektionen är slut.</p>
+        </div>
+      </section>
+
+      <!-- 8. SYSTEMSKISS -->
+      <section id="s-skiss" data-title="Systemskiss" aria-labelledby="h-skiss" hidden>
+        <h2 id="h-skiss" tabindex="-1">Systemskiss över AI-tekniker</h2>
+        <p class="lead">Koppla projektet till begrepp från AI 2. Markera vilka tekniker som <strong>används och testas</strong> i er assistent och vilka som bara är <strong>möjliga vidareutvecklingar</strong>. Förklara varför minst tre tekniker är relevanta för ert område.</p>
+
+        <div class="card">
+          <h3>Så här flödar det i en assistent</h3>
+          <ol class="flow">
+            <li>Användaren skriver en fråga</li>
+            <li>Instruktionen och faktaunderlaget styr AI:n</li>
+            <li>AI-verktyget tolkar frågan och skapar ett svar</li>
+            <li>Svaret visas för användaren</li>
+            <li>Människor testar, rättar och underhåller</li>
+          </ol>
+        </div>
+
+        <div id="tech-fields"></div>
+
+        <div class="field">
+          <label for="f-tech-skiss">Beskriv med egna ord hur delarna i er lösning hänger ihop</label>
+          <p class="hint" id="h-tech-skiss">Rita gärna en skiss på papper och beskriv den här. Vem gör vad: användaren, AI-verktyget, faktaunderlaget och ni som utvecklare?</p>
+          <textarea id="f-tech-skiss" data-key="tech_skiss" rows="6" aria-describedby="h-tech-skiss"></textarea>
+        </div>
+      </section>
+
+      <!-- 9. INLÄMNING -->
+      <section id="s-inlamning" data-title="Inlämning" aria-labelledby="h-inlamning" hidden>
+        <h2 id="h-inlamning" tabindex="-1">Inlämning</h2>
+        <p class="lead">Gå igenom checklistan innan ni lämnar in. Bocka av när en punkt verkligen är klar.</p>
+        <fieldset class="checklist">
+          <legend>Checklista inför inlämning</legend>
+          <div id="check-fields"></div>
+        </fieldset>
+        <p><progress id="check-progress" max="12" value="0" aria-labelledby="check-progress-text"></progress></p>
+        <p id="check-progress-text"><strong>0 av 12 punkter avbockade</strong></p>
+
+        <div class="card">
+          <h3>Exportera</h3>
+          <p>Rapporten är en läsbar Markdown-fil med gruppens fält och testfall. Loggbok och reflektion finns i varje elevs eget arbetsdokument och ingår inte i rapporten. JSON-filen är en säkerhetskopia som du kan importera igen. Ladda upp filerna i Google Classroom.</p>
+          <div class="button-row">
+            <button type="button" class="btn primary" id="btn-export-report">Exportera komplett arbetsrapport</button>
+          </div>
+          <p class="hint">Knappen laddar ner två filer: en .md-rapport och en .json-säkerhetskopia. Om webbläsaren frågar om den får ladda ner flera filer, svara ja.</p>
+        </div>
+        <p class="notice">Kom ihåg: Gruppens webbplats avgör inte ensam ditt betyg. Din individuella loggbok och reflektion i arbetsdokumentet, samt den muntliga avstämningen, är viktiga.</p>
+      </section>
+
+      <div class="pager" id="pager">
+        <button type="button" class="btn" id="btn-prev">← Föregående</button>
+        <button type="button" class="btn primary" id="btn-next">Nästa →</button>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
