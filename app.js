@@ -5,7 +5,13 @@
 
   var NS = 'ai2-assistent-arbetsyta-v1';
   var META_KEY = NS + '-meta';
-  var VERSION = 1;
+  var VERSION = 2;
+
+  /* Lärarkod för de tre avstämningarna.
+     Detta är en pedagogisk spärr i webbläsaren, INTE ett säkert behörighetssystem.
+     Koden ligger i klientkoden och kan läsas eller kringgås av den som öppnar
+     webbläsarens utvecklarverktyg. Byt koden genom att ändra värdet nedan. */
+  var TEACHER_CODE = '676767';
 
   /* ---------- Innehåll som bygger formulären ---------- */
 
@@ -78,6 +84,18 @@
   var RESULTS = [['', 'Inte bedömt än'], ['ok', 'Godkänt'], ['delvis', 'Delvis godkänt'], ['nej', 'Inte godkänt']];
   var RESULT_LABEL = {}; RESULTS.forEach(function (r) { RESULT_LABEL[r[0]] = r[1]; });
 
+  var APPROVAL_STATUS_LABEL = { pending: 'Väntar på läraren', approved: 'Godkänd', needs_recheck: 'Behöver ny kontroll' };
+
+  var ANALYSIS_KEYS = ['analys_svaghet', 'analys_andring', 'analys_jamforelse'];
+
+  function productFieldKeys() {
+    var keys = PLAN.map(function (f) { return f.key; }).concat(BLOCKS.map(function (b) { return b.key; }))
+      .concat(['facts', 'v1', 'v2', 'v_changes']).concat(ANALYSIS_KEYS);
+    TECH.forEach(function (t) { keys.push('tech_' + t.id + '_mode', 'tech_' + t.id + '_why'); });
+    keys.push('tech_skiss');
+    return keys;
+  }
+
   var EXAMPLE_FACTS =
     'BJÖRKFESTIVALEN 2027 (fiktiv festival)\n\n' +
     'Datum och plats\n' +
@@ -106,19 +124,243 @@
 
   /* ---------- Tillstånd ---------- */
 
-  var state = { fields: {}, tests: [] };
+  var state = { fields: {}, tests: [], retests: [], approvals: null, testSeq: 0 };
   var meta = { savedAt: null, exportedAt: null, dirtySinceExport: false };
   var pendingSave = false;
   var saveTimer = null;
   var LABELS = {};
   var OPTIONS = {};
   var storageOk = true;
+  var dialogState = { step: null, mode: null, trigger: null };
 
+  var STEP_META = {
+    1: { title: 'Underlag och förväntade svar', desc: 'Visa faktaunderlaget och era testfrågor med egna förväntade svar för läraren. Båda ska kunna förklara underlaget innan ni börjar testa.', anchor: 'test' },
+    2: { title: 'Analys före version 2', desc: 'Visa era sex tester, en konkret svaghet eller begränsning och den ändring ni vill pröva. Förklara varför ändringen kan hjälpa.', anchor: 'test' },
+    3: { title: 'Slutkontroll före inlämning', desc: 'Visa jämförelsen mellan versionerna och systemskissen. Båda ska kunna förklara ett eget test. Visa även era individuella arbetsdokument för läraren.', anchor: 'inlamning' }
+  };
+
+  function nextTestId() {
+    state.testSeq = (state.testSeq || 0) + 1;
+    return 't' + state.testSeq;
+  }
   function defaultTests() {
-    return TEST_TYPES.slice(0, 6).map(function (t) { return newTest(t.id); });
+    var i = 0;
+    return TEST_TYPES.slice(0, 6).map(function (t) {
+      i++;
+      return { id: 't' + i, type: t.id, owner: '', q: '', a: '', crit: '', result: '', err: '', fix: '' };
+    });
   }
   function newTest(type) {
-    return { type: type || 'normal', q: '', a: '', crit: '', result: '', err: '', fix: '' };
+    return { id: nextTestId(), type: type || 'normal', owner: '', q: '', a: '', crit: '', result: '', err: '', fix: '' };
+  }
+  function newRetest() {
+    return { ref: '', promptVersion: 'v2', owner: '', a: '', result: '', err: '', fix: '' };
+  }
+  function findTestById(id) {
+    for (var i = 0; i < state.tests.length; i++) if (state.tests[i].id === id) return state.tests[i];
+    return null;
+  }
+  function defaultApprovals() {
+    return {
+      step1: { status: 'pending', approvedAt: null, revokedAt: null, snapshot: null },
+      step2: { status: 'pending', approvedAt: null, revokedAt: null },
+      step3: { status: 'pending', approvedAt: null, revokedAt: null, snapshot: null },
+      history: []
+    };
+  }
+
+  /* ---------- Avstämningar (lärargodkännanden) ----------
+     Detta är ett pedagogiskt stöd i webbläsaren, inte ett säkert behörighetssystem.
+     Det kan inte hindra elever från att testa i ett externt AI-verktyg eller
+     manipulera klientkoden. Se README för en ärlig beskrivning. */
+
+  function stepApproved(n) { return state.approvals['step' + n].status === 'approved'; }
+  function step1Approved() { return stepApproved(1); }
+  function step2Approved() { return stepApproved(2); }
+  function step3Approved() { return stepApproved(3); }
+
+  function testFieldsLocked() { return !step1Approved(); }
+  function v2Locked() { return !(step1Approved() && step2Approved()); }
+  function exportLocked() { return !step3Approved(); }
+
+  function ownerCounts(list, key) {
+    var counts = {};
+    list.forEach(function (item) {
+      var o = (item[key || 'owner'] || '').trim().toLowerCase();
+      if (o) counts[o] = (counts[o] || 0) + 1;
+    });
+    return counts;
+  }
+
+  function step1Requirements() {
+    var six = state.tests.slice(0, 6);
+    var factsOk = val('facts').trim().length >= 200;
+    var sixOk = state.tests.length >= 6 && six.every(function (t) { return t.q.trim() !== '' && t.crit.trim() !== '' && t.owner.trim() !== ''; });
+    var counts = ownerCounts(six);
+    var names = Object.keys(counts);
+    var distOk = sixOk && names.length >= 2 && names.every(function (n) { return counts[n] >= 3; });
+    return [
+      { label: 'Faktaunderlaget är ifyllt (minst 200 tecken).', ok: factsOk },
+      { label: 'Minst sex testfall med fråga, förväntat svar och ansvarig elev ifyllda.', ok: sixOk },
+      { label: 'Minst två elever, var och en ansvarig för minst tre av de sex första testfallen.', ok: distOk }
+    ];
+  }
+
+  function step2Requirements() {
+    return [
+      { label: 'Avstämning 1 är godkänd.', ok: step1Approved() },
+      { label: 'En konkret svaghet eller begränsning är beskriven.', ok: has('analys_svaghet') },
+      { label: 'Planerad ändring och motivering är beskriven.', ok: has('analys_andring') }
+    ];
+  }
+
+  function step3Requirements() {
+    var rts = state.retests;
+    var filledOk = rts.length >= 2 && rts.every(function (r) {
+      return r.ref && r.promptVersion.trim() !== '' && r.owner.trim() !== '' && r.a.trim() !== '' && r.result !== '';
+    });
+    var perStudentOk = Object.keys(ownerCounts(rts)).length >= 2;
+    var techOk = TECH.every(function (t) { return has('tech_' + t.id + '_mode'); }) &&
+      TECH.filter(function (t) { return has('tech_' + t.id + '_why'); }).length >= 3;
+    return [
+      { label: 'Avstämning 1 och 2 är godkända.', ok: step1Approved() && step2Approved() },
+      { label: 'Instruktion version 2 är ifylld.', ok: has('v2') },
+      { label: 'Minst två omtester ifyllda, minst ett per elev.', ok: filledOk && perStudentOk },
+      { label: 'Jämförelsen mellan version 1 och version 2 är skriven.', ok: has('analys_jamforelse') },
+      { label: 'Systemskissen har minst tre motiverade tekniker.', ok: techOk }
+    ];
+  }
+
+  function stepRequirements(n) {
+    return n === 1 ? step1Requirements() : n === 2 ? step2Requirements() : step3Requirements();
+  }
+
+  function buildStep1Snapshot() {
+    return {
+      facts: val('facts'),
+      originalIds: state.tests.slice(0, 6).map(function (t) { return t.id; }),
+      tests: state.tests.slice(0, 6).map(function (t) { return { q: t.q, crit: t.crit, owner: t.owner }; })
+    };
+  }
+
+  function productFingerprint() {
+    var obj = { fields: {}, tests: state.tests, retests: state.retests };
+    productFieldKeys().forEach(function (k) { obj.fields[k] = state.fields[k] || ''; });
+    return JSON.stringify(obj);
+  }
+
+  function checkDrift() {
+    if (state.approvals.step3.status === 'approved' && state.approvals.step3.snapshot !== productFingerprint()) {
+      state.approvals.step3.status = 'needs_recheck';
+      state.approvals.history.push({ step: 3, action: 'needs_recheck', at: new Date().toISOString() });
+      toast('Innehållet har ändrats sedan slutgodkännandet. Läraren behöver godkänna avstämning 3 igen innan slutexporten öppnas.');
+    }
+  }
+
+  function approveStep(n) {
+    var now = new Date().toISOString();
+    var step = state.approvals['step' + n];
+    step.status = 'approved';
+    step.approvedAt = now;
+    step.revokedAt = null;
+    if (n === 1) step.snapshot = buildStep1Snapshot();
+    if (n === 3) step.snapshot = productFingerprint();
+    state.approvals.history.push({ step: n, action: 'approved', at: now });
+  }
+
+  function revokeStep(n) {
+    var now = new Date().toISOString();
+    for (var s = n; s <= 3; s++) {
+      var step = state.approvals['step' + s];
+      if (step.status !== 'pending') {
+        step.status = 'pending';
+        step.revokedAt = now;
+        state.approvals.history.push({ step: s, action: 'revoked', at: now });
+      }
+    }
+  }
+
+  function statusBadgeText(status) { return APPROVAL_STATUS_LABEL[status] || status; }
+
+  function approvalBoxHtml(step) {
+    var meta = STEP_META[step];
+    var s = state.approvals['step' + step];
+    var h = '<h3>Avstämning ' + step + ': ' + esc(meta.title) + '</h3>';
+    h += '<p><strong>Status: ' + esc(statusBadgeText(s.status)) + '</strong>' +
+      (s.status === 'approved' && s.approvedAt ? ' (godkänd ' + esc(fmtDateTime(s.approvedAt)) + ')' : '') + '</p>';
+    if (s.status === 'needs_recheck') h += '<p class="warning" role="note">Innehållet har ändrats sedan förra godkännandet. Läraren behöver kontrollera och godkänna igen.</p>';
+    h += '<p>' + esc(meta.desc) + '</p>';
+    h += '<div class="button-row">';
+    if (s.status === 'approved') {
+      h += '<button type="button" class="btn" data-act="revoke" data-step="' + step + '">Återkalla godkännande (lärare)</button>';
+    } else {
+      h += '<button type="button" class="btn primary" data-act="approve" data-step="' + step + '">Lärargodkännande</button>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function renderApprovals() {
+    [1, 2, 3].forEach(function (n) {
+      var box = $('#step' + n + '-box');
+      if (box) box.innerHTML = approvalBoxHtml(n);
+    });
+
+    var v2lock = v2Locked();
+    var v2El = $('#f-v2'), mkBtn = $('#btn-make-v2'), v2Notice = $('#v2-lock-notice');
+    if (v2El) v2El.disabled = v2lock;
+    if (mkBtn) mkBtn.disabled = v2lock;
+    if (v2Notice) {
+      v2Notice.hidden = !v2lock;
+      if (v2lock) v2Notice.textContent = 'Version 2 öppnas i Testlaboratoriet när avstämning 1 och 2 är godkända av läraren.';
+    }
+
+    var exlock = exportLocked();
+    var exBtn = $('#btn-export-report'), exNotice = $('#export-lock-notice');
+    if (exBtn) exBtn.disabled = exlock;
+    if (exNotice) {
+      exNotice.hidden = !exlock;
+      if (exlock) exNotice.textContent = state.approvals.step3.status === 'needs_recheck'
+        ? 'Innehållet har ändrats sedan slutgodkännandet. Slutexporten öppnas när läraren godkänner avstämning 3 igen.'
+        : 'Slutexporten öppnas när avstämning 3 är godkänd av läraren.';
+    }
+
+    var ov = $('#approval-overview');
+    if (ov) {
+      ov.innerHTML = [1, 2, 3].map(function (n) {
+        var s = state.approvals['step' + n];
+        return '<li><a href="#' + STEP_META[n].anchor + '">Avstämning ' + n + ': ' + esc(STEP_META[n].title) + '</a> ' +
+          '<strong>' + esc(statusBadgeText(s.status)) + '</strong></li>';
+      }).join('');
+    }
+  }
+
+  function openApprovalDialog(step, mode, triggerEl) {
+    dialogState.step = step; dialogState.mode = mode; dialogState.trigger = triggerEl || null;
+    var meta = STEP_META[step];
+    var dlg = $('#approval-dialog');
+    $('#appr-title').textContent = (mode === 'revoke' ? 'Återkalla avstämning ' : 'Avstämning ') + step + ': ' + meta.title;
+    $('#appr-desc').textContent = mode === 'revoke'
+      ? 'Detta återkallar godkännandet för avstämning ' + step + (step < 3 ? '. Senare avstämningar låses då också igen.' : '.') + ' Allt innehåll och all historik bevaras.'
+      : meta.desc;
+    var reqs = mode === 'revoke' ? [] : stepRequirements(step);
+    $('#appr-requirements').innerHTML = reqs.map(function (r) {
+      return '<li' + (r.ok ? '' : ' class="missing"') + '>' + (r.ok ? '✓ ' : '✗ ') + esc(r.label) + '</li>';
+    }).join('');
+    $('#appr-submit').textContent = mode === 'revoke' ? 'Återkalla godkännande' : 'Godkänn och öppna nästa steg';
+    $('#appr-code').value = '';
+    $('#appr-error').hidden = true;
+    dlg.showModal();
+    $('#appr-code').focus();
+  }
+
+  function closeApprovalDialog() {
+    var dlg = $('#approval-dialog');
+    $('#appr-code').value = '';
+    $('#appr-error').hidden = true;
+    if (dlg.open) dlg.close();
+    if (dialogState.trigger && dialogState.trigger.focus) dialogState.trigger.focus();
+    dialogState = { step: null, mode: null, trigger: null };
   }
 
   /* ---------- Hjälpfunktioner ---------- */
@@ -262,37 +504,105 @@
     return '';
   }
 
+  function isOriginalTest(t) {
+    return !!(state.approvals.step1.snapshot && state.approvals.step1.snapshot.originalIds.indexOf(t.id) > -1);
+  }
+
   function renderTests() {
     var list = $('#test-list');
     if (!state.tests.length) {
       list.innerHTML = '<p class="notice">Inga testfall än. Välj &quot;Lägg till testfall&quot;.</p>';
       return;
     }
+    var locked = testFieldsLocked();
     list.innerHTML = state.tests.map(function (t, i) {
       var p = 't' + i + '_';
-      var h = '<article class="card test-card" data-i="' + i + '"><header><h3>Testfall ' + (i + 1) + '</h3>' +
-        '<button type="button" class="btn danger small" data-act="remove-test" data-i="' + i + '">Ta bort testfall ' + (i + 1) + '</button></header>' +
-        '<div class="fields">';
+      var frozen = isOriginalTest(t);
+      var h = '<article class="card test-card" data-i="' + i + '"><header><h3>Testfall ' + (i + 1) + '</h3>';
+      if (frozen) {
+        h += '<p class="hint">Ett av de sex ursprungliga testfallen. Kan inte tas bort efter avstämning 1.</p>';
+      } else {
+        h += '<button type="button" class="btn danger small" data-act="remove-test" data-i="' + i + '">Ta bort testfall ' + (i + 1) + '</button>';
+      }
+      h += '</header><div class="fields">';
+      h += '<div class="field"><label for="' + p + 'owner">Ansvarig elev</label><p class="hint" id="' + p + 'owner-h">Namnet eller initialerna för den elev som ansvarar för testfallet.</p>' +
+        '<input type="text" id="' + p + 'owner" data-t="owner" aria-describedby="' + p + 'owner-h" value="' + esc(t.owner) + '"></div>';
       h += '<div class="field"><label for="' + p + 'type">Typ av test</label><p class="hint" id="' + p + 'help">' + esc(typeHelp(t.type)) + '</p>' +
         '<select id="' + p + 'type" data-t="type" aria-describedby="' + p + 'help">';
       TEST_TYPES.forEach(function (tt) { h += '<option value="' + tt.id + '"' + (tt.id === t.type ? ' selected' : '') + '>' + esc(tt.name) + '</option>'; });
       h += '</select></div>';
       var sugg = typeSuggestion(t.type);
       h += tarea(p + 'q', 'q', 'Fråga eller instruktion', t.q, 3, sugg ? 'Förslag: ' + sugg : '');
-      h += tarea(p + 'a', 'a', 'AI-assistentens svar', t.a, 4, 'Klistra in svaret från AI-verktyget.');
+      h += tarea(p + 'a', 'a', 'AI-assistentens svar', t.a, 4, locked ? 'Öppnas efter avstämning 1.' : 'Klistra in svaret från AI-verktyget.', locked);
       h += tarea(p + 'crit', 'crit', 'Förväntat svar eller bedömningskriterium', t.crit, 3, 'Vad borde assistenten svara, eller vad krävs för att svaret ska vara bra?');
-      h += '<div class="field"><label for="' + p + 'result">Godkänt, delvis godkänt eller inte godkänt</label><select id="' + p + 'result" data-t="result">';
+      h += '<div class="field"><label for="' + p + 'result">Godkänt, delvis godkänt eller inte godkänt</label><select id="' + p + 'result" data-t="result"' + (locked ? ' disabled aria-disabled="true"' : '') + '>';
       RESULTS.forEach(function (r) { h += '<option value="' + r[0] + '"' + (r[0] === t.result ? ' selected' : '') + '>' + esc(r[1]) + '</option>'; });
       h += '</select></div>';
-      h += tarea(p + 'err', 'err', 'Vilket fel upptäcktes?', t.err, 3, 'Skriv &quot;Inget fel&quot; om svaret var bra.');
-      h += tarea(p + 'fix', 'fix', 'Hur ska lösningen förbättras?', t.fix, 3, 'Vilken ändring i instruktionen eller underlaget skulle rätta felet?');
+      h += tarea(p + 'err', 'err', 'Vilket fel upptäcktes?', t.err, 3, locked ? 'Öppnas efter avstämning 1.' : 'Skriv &quot;Inget fel&quot; om svaret var bra.', locked);
+      h += tarea(p + 'fix', 'fix', 'Hur ska lösningen förbättras?', t.fix, 3, locked ? 'Öppnas efter avstämning 1.' : 'Vilken ändring i instruktionen eller underlaget skulle rätta felet?', locked);
       return h + '</div></article>';
     }).join('');
   }
-  function tarea(id, field, label, value, rows, hint) {
+  function originalTestEntries() {
+    var snap = state.approvals.step1.snapshot;
+    if (!snap) return [];
+    return snap.originalIds.map(function (id, idx) { return { id: id, index: idx, data: snap.tests[idx] || { q: '', crit: '', owner: '' } }; });
+  }
+
+  function retestRefOptions(selected) {
+    var h = '<option value="">Välj testfall …</option>';
+    originalTestEntries().forEach(function (o) {
+      h += '<option value="' + o.id + '"' + (o.id === selected ? ' selected' : '') + '>Testfall ' + (o.index + 1) + '</option>';
+    });
+    return h;
+  }
+
+  function renderRetests() {
+    var wrap = $('#retest-list');
+    var addBtn = $('#btn-add-retest');
+    var jamforelseEl = $('#f-jamforelse');
+    var locked = v2Locked();
+    if (addBtn) addBtn.disabled = locked;
+    if (jamforelseEl) jamforelseEl.disabled = locked;
+    if (locked) {
+      wrap.innerHTML = '<p class="notice">Omtesterna öppnas när avstämning 1 och 2 är godkända.</p>';
+      return;
+    }
+    if (!state.retests.length) {
+      wrap.innerHTML = '<p class="notice">Inga omtester än. Välj &quot;Lägg till omtest&quot;.</p>';
+      return;
+    }
+    var entries = originalTestEntries();
+    wrap.innerHTML = state.retests.map(function (r, i) {
+      var p = 'rt' + i + '_';
+      var orig = null;
+      entries.forEach(function (o) { if (o.id === r.ref) orig = o; });
+      var h = '<article class="card test-card" data-ri="' + i + '"><header><h3>Omtest ' + (i + 1) + '</h3>' +
+        '<button type="button" class="btn danger small" data-act="remove-retest" data-ri="' + i + '">Ta bort omtest ' + (i + 1) + '</button></header><div class="fields">';
+      h += '<div class="field"><label for="' + p + 'ref">Ursprungligt testfall</label><select id="' + p + 'ref" data-rt="ref">' + retestRefOptions(r.ref) + '</select></div>';
+      if (r.ref && !orig) h += '<p class="warning" role="note">Det ursprungliga testfallet kunde inte hittas.</p>';
+      else if (orig) h += '<p class="hint"><strong>Fråga (från avstämning 1):</strong> ' + esc(orig.data.q || '(inte ifylld)') + '<br><strong>Förväntat svar:</strong> ' + esc(orig.data.crit || '(inte ifyllt)') + '</p>';
+      h += '<div class="field"><label for="' + p + 'pv">Promptversion som testades</label><input type="text" id="' + p + 'pv" data-rt="promptVersion" value="' + esc(r.promptVersion) + '"></div>';
+      h += '<div class="field"><label for="' + p + 'owner">Ansvarig elev</label><input type="text" id="' + p + 'owner" data-rt="owner" value="' + esc(r.owner) + '"></div>';
+      h += rtarea(p + 'a', 'a', 'AI-assistentens svar', r.a, 4, 'Klistra in svaret från AI-verktyget.');
+      h += '<div class="field"><label for="' + p + 'result">Godkänt, delvis godkänt eller inte godkänt</label><select id="' + p + 'result" data-rt="result">';
+      RESULTS.forEach(function (rr) { h += '<option value="' + rr[0] + '"' + (rr[0] === r.result ? ' selected' : '') + '>' + esc(rr[1]) + '</option>'; });
+      h += '</select></div>';
+      h += rtarea(p + 'err', 'err', 'Vilket fel upptäcktes?', r.err, 3, 'Skriv &quot;Inget fel&quot; om svaret var bra.');
+      h += rtarea(p + 'fix', 'fix', 'Hur ska lösningen förbättras?', r.fix, 3, 'Vilken ändring skulle rätta felet?');
+      return h + '</div></article>';
+    }).join('');
+  }
+  function rtarea(id, field, label, value, rows, hint) {
     return '<div class="field"><label for="' + id + '">' + esc(label) + '</label>' +
       (hint ? '<p class="hint" id="' + id + '-h">' + (hint.indexOf('&quot;') > -1 ? hint : esc(hint)) + '</p>' : '') +
-      '<textarea id="' + id + '" data-t="' + field + '" rows="' + rows + '"' + (hint ? ' aria-describedby="' + id + '-h"' : '') + '>' + esc(value) + '</textarea></div>';
+      '<textarea id="' + id + '" data-rt="' + field + '" rows="' + rows + '"' + (hint ? ' aria-describedby="' + id + '-h"' : '') + '>' + esc(value) + '</textarea></div>';
+  }
+
+  function tarea(id, field, label, value, rows, hint, locked) {
+    return '<div class="field"><label for="' + id + '">' + esc(label) + '</label>' +
+      (hint ? '<p class="hint" id="' + id + '-h">' + (hint.indexOf('&quot;') > -1 ? hint : esc(hint)) + '</p>' : '') +
+      '<textarea id="' + id + '" data-t="' + field + '" rows="' + rows + '"' + (hint ? ' aria-describedby="' + id + '-h"' : '') + (locked ? ' disabled aria-disabled="true"' : '') + '>' + esc(value) + '</textarea></div>';
   }
 
   function testDone(t) { return t.q.trim() !== '' && t.crit.trim() !== '' && t.a.trim() !== '' && t.result !== ''; }
@@ -303,6 +613,7 @@
     state.tests.forEach(function (t, i) {
       out.push(sub + ' Testfall ' + (i + 1) + ': ' + typeName(t.type));
       out.push('');
+      out.push('- **Ansvarig elev:** ' + oneLine(t.owner));
       out.push('- **Fråga eller instruktion:** ' + oneLine(t.q));
       out.push('- **AI-assistentens svar:** ' + oneLine(t.a));
       out.push('- **Förväntat svar eller bedömningskriterium:** ' + oneLine(t.crit));
@@ -323,6 +634,40 @@
     return '# Testprotokoll' + (has('plan_namn') ? ': ' + val('plan_namn') : '') + '\n\n' +
       'Genomförda testfall: ' + c.done + ' av ' + c.total + '. Godkända: ' + c.ok + '. Delvis godkända: ' + c.partial + '. Inte godkända: ' + c.fail + '.\n\n' +
       testsMd();
+  }
+
+  function retestsMd() {
+    var entries = originalTestEntries();
+    var out = [];
+    state.retests.forEach(function (r, i) {
+      var orig = null;
+      entries.forEach(function (o) { if (o.id === r.ref) orig = o; });
+      out.push('### Omtest ' + (i + 1) + (orig ? ' (avser testfall ' + (orig.index + 1) + ')' : ' (ursprungligt testfall saknas)'));
+      out.push('');
+      out.push('- **Ansvarig elev:** ' + oneLine(r.owner));
+      out.push('- **Promptversion:** ' + oneLine(r.promptVersion));
+      if (orig) {
+        out.push('- **Ursprunglig fråga:** ' + oneLine(orig.data.q));
+        out.push('- **Ursprungligt förväntat svar:** ' + oneLine(orig.data.crit));
+      }
+      out.push('- **AI-assistentens svar:** ' + oneLine(r.a));
+      out.push('- **Bedömning:** ' + (RESULT_LABEL[r.result] || RESULT_LABEL['']));
+      out.push('- **Vilket fel upptäcktes?** ' + oneLine(r.err));
+      out.push('- **Hur ska lösningen förbättras?** ' + oneLine(r.fix));
+      out.push('');
+    });
+    return out.join('\n');
+  }
+
+  function approvalsMd() {
+    var out = [];
+    [1, 2, 3].forEach(function (n) {
+      var s = state.approvals['step' + n];
+      out.push('- **Avstämning ' + n + ' (' + STEP_META[n].title + '):** ' + statusBadgeText(s.status) +
+        (s.approvedAt ? ', godkänd ' + (fmtDateTime(s.approvedAt) || s.approvedAt) : '') +
+        (s.revokedAt && s.status !== 'approved' ? ', senast återkallad ' + (fmtDateTime(s.revokedAt) || s.revokedAt) : ''));
+    });
+    return out.join('\n') + '\n';
   }
 
   function countTests() {
@@ -401,6 +746,7 @@
       if (a) a.textContent = d[s.id] ? '✓ Klar' : '';
     });
 
+    renderApprovals();
     updateStatus();
   }
 
@@ -425,7 +771,10 @@
   /* ---------- Lokal lagring ---------- */
 
   function snapshot() {
-    return { app: NS, version: VERSION, fields: state.fields, tests: state.tests };
+    return {
+      app: NS, version: VERSION, fields: state.fields, tests: state.tests,
+      retests: state.retests, approvals: state.approvals, testSeq: state.testSeq
+    };
   }
 
   function writeStorage() {
@@ -455,6 +804,7 @@
     pendingSave = true;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () { saveNow(false); }, 600);
+    checkDrift();
     refresh();
   }
 
@@ -473,6 +823,40 @@
     return null;
   }
 
+  function validStatus(s) { return s === 'pending' || s === 'approved' || s === 'needs_recheck'; }
+
+  function sanitizeApprovals(raw) {
+    var out = defaultApprovals();
+    if (!raw || typeof raw !== 'object') return out;
+    ['step1', 'step2', 'step3'].forEach(function (k) {
+      var r = raw[k];
+      if (r && typeof r === 'object' && validStatus(r.status)) {
+        out[k].status = r.status;
+        out[k].approvedAt = typeof r.approvedAt === 'string' ? r.approvedAt : null;
+        out[k].revokedAt = typeof r.revokedAt === 'string' ? r.revokedAt : null;
+      }
+    });
+    if (raw.step1 && raw.step1.snapshot && typeof raw.step1.snapshot === 'object') {
+      var snap = raw.step1.snapshot;
+      if (typeof snap.facts === 'string' && Array.isArray(snap.tests) && Array.isArray(snap.originalIds)) {
+        out.step1.snapshot = {
+          facts: snap.facts,
+          originalIds: snap.originalIds.filter(function (x) { return typeof x === 'string'; }),
+          tests: snap.tests.filter(function (t) { return t && typeof t === 'object'; }).map(function (t) {
+            return { q: typeof t.q === 'string' ? t.q : '', crit: typeof t.crit === 'string' ? t.crit : '', owner: typeof t.owner === 'string' ? t.owner : '' };
+          })
+        };
+      }
+    }
+    if (raw.step3 && typeof raw.step3.snapshot === 'string') out.step3.snapshot = raw.step3.snapshot;
+    if (Array.isArray(raw.history)) {
+      out.history = raw.history.filter(function (h) {
+        return h && typeof h === 'object' && (h.step === 1 || h.step === 2 || h.step === 3) && typeof h.action === 'string' && typeof h.at === 'string';
+      }).map(function (h) { return { step: h.step, action: h.action, at: h.at }; });
+    }
+    return out;
+  }
+
   function sanitize(obj) {
     if (!obj || typeof obj !== 'object' || obj.app !== NS || typeof obj.fields !== 'object' || obj.fields === null || !Array.isArray(obj.tests)) return null;
     var fields = {};
@@ -480,13 +864,36 @@
       var v = obj.fields[k];
       if (typeof v === 'string' || typeof v === 'boolean') fields[k] = v;
     });
+    var usedIds = {};
     var tests = obj.tests.map(function (t) {
       t = t && typeof t === 'object' ? t : {};
-      var r = newTest(typeof t.type === 'string' ? t.type : 'normal');
+      var id = typeof t.id === 'string' && t.id && !usedIds[t.id] ? t.id : null;
+      var r = { id: id, type: typeof t.type === 'string' ? t.type : 'normal', owner: typeof t.owner === 'string' ? t.owner : '', q: '', a: '', crit: '', result: '', err: '', fix: '' };
       ['q', 'a', 'crit', 'result', 'err', 'fix'].forEach(function (k) { if (typeof t[k] === 'string') r[k] = t[k]; });
+      if (id) usedIds[id] = true;
       return r;
     });
-    return { fields: fields, tests: tests };
+    var maxSeq = 0;
+    Object.keys(usedIds).forEach(function (id) {
+      var m = /^t(\d+)$/.exec(id);
+      if (m) maxSeq = Math.max(maxSeq, parseInt(m[1], 10));
+    });
+    tests.forEach(function (t) { if (!t.id) { maxSeq++; t.id = 't' + maxSeq; } });
+    var validIds = {}; tests.forEach(function (t) { validIds[t.id] = true; });
+
+    var retests = Array.isArray(obj.retests) ? obj.retests.filter(function (r) { return r && typeof r === 'object'; }).map(function (r) {
+      return {
+        ref: typeof r.ref === 'string' && validIds[r.ref] ? r.ref : '',
+        promptVersion: typeof r.promptVersion === 'string' ? r.promptVersion : 'v2',
+        owner: typeof r.owner === 'string' ? r.owner : '',
+        a: typeof r.a === 'string' ? r.a : '',
+        result: typeof r.result === 'string' ? r.result : '',
+        err: typeof r.err === 'string' ? r.err : '',
+        fix: typeof r.fix === 'string' ? r.fix : ''
+      };
+    }) : [];
+
+    return { fields: fields, tests: tests, retests: retests, approvals: sanitizeApprovals(obj.approvals), testSeq: maxSeq };
   }
 
   function applyState() {
@@ -499,6 +906,7 @@
       }
     });
     renderTests();
+    renderRetests();
     refresh();
   }
 
@@ -551,20 +959,29 @@
     L.push('### Ändringar mellan version 1 och version 2', '', has('v_changes') ? val('v_changes').trim() + '\n' : '_Inte ifyllt_\n');
 
     var c = countTests();
-    L.push('## 4. Testprotokoll', '');
+    L.push('## 4. Testprotokoll (version 1)', '');
     L.push('Genomförda testfall: ' + c.done + ' av ' + c.total + '. Godkända: ' + c.ok + '. Delvis godkända: ' + c.partial + '. Inte godkända: ' + c.fail + '.', '');
     L.push(testsMd());
 
-    L.push('## 5. Systemskiss över AI-tekniker', '');
+    L.push('## 5. Analys och omtester (version 2)', '');
+    L.push(fieldMd('analys_svaghet'));
+    L.push(fieldMd('analys_andring'));
+    if (state.retests.length) L.push(retestsMd()); else L.push('_Inga omtester ännu._', '');
+    L.push(fieldMd('analys_jamforelse'));
+
+    L.push('## 6. Systemskiss över AI-tekniker', '');
     TECH.forEach(function (t) {
       L.push('### ' + t.name, '', '_' + t.def + '_', '');
       L.push(fieldsMd(['tech_' + t.id + '_mode', 'tech_' + t.id + '_why']));
     });
     L.push(fieldMd('tech_skiss'));
 
-    L.push('## 6. Inlämningschecklista', '');
+    L.push('## 7. Inlämningschecklista', '');
     CHECKS.forEach(function (ch, i) { L.push('- [' + (state.fields['check_' + (i + 1)] ? 'x' : ' ') + '] ' + ch); });
     L.push('');
+
+    L.push('## 8. Avstämningar (lärargodkännanden)', '');
+    L.push(approvalsMd());
     return L.join('\n');
   }
 
@@ -574,12 +991,22 @@
       var data = null;
       try { data = sanitize(JSON.parse(String(reader.result))); } catch (e) { data = null; }
       if (!data) { toast('Filen kunde inte läsas. Välj en JSON-fil som du exporterat härifrån.'); return; }
-      if (!window.confirm('Importen ersätter allt som ligger i webbläsaren just nu. Vill du fortsätta?')) return;
+      var hasCurrent = has('plan_namn') || has('facts') || has('v1') || state.tests.some(function (t) { return t.q.trim() || t.a.trim(); });
+      if (hasCurrent) {
+        if (window.confirm('Importen ersätter allt aktuellt arbete i webbläsaren. Vill du exportera det nuvarande arbetet som säkerhetskopia innan du fortsätter?')) {
+          exportJson(true);
+        } else if (!window.confirm('Fortsätta med importen ändå, utan att exportera nuvarande arbete nu? Det aktuella arbetet försvinner då.')) {
+          toast('Importen avbröts. Inget ändrades.');
+          return;
+        }
+      } else if (!window.confirm('Importen ersätter det som ligger i webbläsaren just nu. Vill du fortsätta?')) {
+        return;
+      }
       state = data;
       meta.dirtySinceExport = false;
       applyState();
       saveNow(false);
-      toast('Arbetet är importerat.');
+      toast('Arbetet är importerat. Eventuella avstämningar som saknades i filen väntar nu på läraren.');
     };
     reader.onerror = function () { toast('Filen kunde inte läsas.'); };
     reader.readAsText(file);
@@ -590,7 +1017,7 @@
     try { localStorage.removeItem(NS); localStorage.removeItem(META_KEY); } catch (e) { /* ignoreras */ }
     clearTimeout(saveTimer);
     pendingSave = false;
-    state = { fields: {}, tests: defaultTests() };
+    state = { fields: {}, tests: defaultTests(), retests: [], approvals: defaultApprovals(), testSeq: 6 };
     meta = { savedAt: null, exportedAt: null, dirtySinceExport: false };
     applyState();
     toast('Allt lokalt arbete är rensat.');
@@ -638,6 +1065,7 @@
       }
       var tf = el.getAttribute && el.getAttribute('data-t');
       if (tf) {
+        if (['a', 'result', 'err', 'fix'].indexOf(tf) > -1 && testFieldsLocked()) { renderTests(); return; }
         var i = parseInt(el.closest('[data-i]').getAttribute('data-i'), 10);
         state.tests[i][tf] = el.value;
         if (tf === 'type') {
@@ -645,6 +1073,15 @@
           if (hp) hp.textContent = typeHelp(el.value);
         }
         markChanged();
+        return;
+      }
+      var rf = el.getAttribute && el.getAttribute('data-rt');
+      if (rf) {
+        if (v2Locked()) { renderRetests(); return; }
+        var ri = parseInt(el.closest('[data-ri]').getAttribute('data-ri'), 10);
+        state.retests[ri][rf] = el.value;
+        markChanged();
+        return;
       }
     });
     document.addEventListener('click', function (e) {
@@ -653,6 +1090,7 @@
         var act = b.getAttribute('data-act');
         if (act === 'remove-test') {
           var i = parseInt(b.getAttribute('data-i'), 10);
+          if (isOriginalTest(state.tests[i])) { renderTests(); return; }
           if (window.confirm('Ta bort testfall ' + (i + 1) + '? Det går inte att ångra.')) {
             state.tests.splice(i, 1);
             renderTests();
@@ -663,9 +1101,57 @@
         else if (act === 'export-json') { exportJson(false); }
         else if (act === 'import') { $('#file-import').click(); }
         else if (act === 'clear') { clearAll(); }
+        else if (act === 'remove-retest') {
+          if (v2Locked()) { renderRetests(); return; }
+          var ri = parseInt(b.getAttribute('data-ri'), 10);
+          if (window.confirm('Ta bort omtest ' + (ri + 1) + '? Det går inte att ångra.')) {
+            state.retests.splice(ri, 1);
+            renderRetests();
+            markChanged();
+            toast('Omtestet är borttaget.');
+          }
+        } else if (act === 'approve' || act === 'revoke') {
+          openApprovalDialog(parseInt(b.getAttribute('data-step'), 10), act, b);
+        }
       }
       var go = e.target.closest ? e.target.closest('[data-go]') : null;
       if (go && go.getAttribute('data-go')) location.hash = '#' + go.getAttribute('data-go');
+    });
+
+    $('#approval-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var code = $('#appr-code').value;
+      $('#appr-code').value = '';
+      if (code !== TEACHER_CODE) {
+        $('#appr-error').textContent = 'Fel lärarkod. Inget ändrades.';
+        $('#appr-error').hidden = false;
+        $('#appr-code').focus();
+        return;
+      }
+      var step = dialogState.step, mode = dialogState.mode;
+      if (mode === 'approve') {
+        var missing = stepRequirements(step).filter(function (r) { return !r.ok; });
+        if (missing.length) {
+          $('#appr-error').textContent = 'Koden stämde, men det som är markerat i rött ovan saknas fortfarande.';
+          $('#appr-error').hidden = false;
+          return;
+        }
+        approveStep(step);
+        toast('Avstämning ' + step + ' är godkänd. Nästa steg är öppet.');
+      } else {
+        revokeStep(step);
+        toast('Avstämning ' + step + ' är återkallad.');
+      }
+      closeApprovalDialog();
+      renderTests();
+      renderRetests();
+      refresh();
+      saveNow(false);
+    });
+    $('#appr-cancel').addEventListener('click', function () { closeApprovalDialog(); });
+    $('#approval-dialog').addEventListener('close', function () {
+      $('#appr-code').value = '';
+      $('#appr-error').hidden = true;
     });
 
     $('#file-import').addEventListener('change', function (e) {
@@ -698,6 +1184,7 @@
       toast('Sparad som version 1.');
     });
     $('#btn-make-v2').addEventListener('click', function () {
+      if (v2Locked()) return;
       if (!has('v1')) { toast('Spara först instruktionen som version 1.'); $('#btn-save-v1').focus(); return; }
       if (has('v2') && !window.confirm('Version 2 finns redan. Vill du ersätta den med den nuvarande instruktionen?')) return;
       setField('v2', buildInstruction());
@@ -716,7 +1203,17 @@
       download('testprotokoll-' + slug(val('plan_namn')) + '-' + stamp() + '.md', testProtocol(), 'text/markdown');
     });
 
+    $('#btn-add-retest').addEventListener('click', function () {
+      if (v2Locked()) return;
+      state.retests.push(newRetest());
+      renderRetests();
+      markChanged();
+      var last = $$('#retest-list [data-rt="ref"]').pop();
+      if (last) last.focus();
+    });
+
     $('#btn-export-report').addEventListener('click', function () {
+      if (exportLocked()) return;
       download(baseName() + '-rapport.md', buildReport(), 'text/markdown');
       setTimeout(function () { exportJson(false); }, 300);
       markExported();
@@ -743,7 +1240,7 @@
   function init() {
     buildForms();
     var stored = loadStored();
-    state = stored || { fields: {}, tests: defaultTests() };
+    state = stored || { fields: {}, tests: defaultTests(), retests: [], approvals: defaultApprovals(), testSeq: 6 };
     if (stored && !state.fields.hasOwnProperty('include_facts')) state.fields.include_facts = true;
     if (!stored) state.fields.include_facts = true;
     bind();

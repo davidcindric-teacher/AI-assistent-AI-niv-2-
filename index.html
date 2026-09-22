@@ -64,6 +64,12 @@
           <p class="hint">Sidan autosparar medan du skriver. <strong>Spara</strong> sparar direkt i webbläsaren. <strong>Exportera arbete</strong> laddar ner en JSON-fil som är din säkerhetskopia. <strong>Importera arbete</strong> läser in en sådan fil igen.</p>
         </div>
 
+        <div class="card">
+          <h2>Lärargodkännanden</h2>
+          <p class="hint">Läraren kontrollerar ert arbete vid tre tillfällen innan nästa steg öppnas. Det är ett pedagogiskt stöd, inte ett säkert lösenordsskydd.</p>
+          <ul id="approval-overview" class="approval-overview"></ul>
+        </div>
+
         <h2>Projektets fyra huvudfrågor</h2>
         <ol class="big-list">
           <li>Vilket problem ska assistenten lösa?</li>
@@ -214,6 +220,7 @@
 
         <h3>Versioner av instruktionen</h3>
         <p class="hint">Ni ska ha minst två versioner. Spara den första som version 1, testa den, förbättra byggstenarna och skapa sedan version 2. Ni kan redigera versionerna direkt i rutorna.</p>
+        <p class="warning" role="note" id="v2-lock-notice" hidden></p>
         <div class="button-row">
           <button type="button" class="btn" id="btn-save-v1">Spara som version 1</button>
           <button type="button" class="btn primary" id="btn-make-v2">Skapa version 2</button>
@@ -224,7 +231,8 @@
         </div>
         <div class="field">
           <label for="f-v2">Instruktion version 2</label>
-          <textarea id="f-v2" data-key="v2" rows="10"></textarea>
+          <p class="hint" id="h-v2">Öppnas i Testlaboratoriet efter avstämning 1 och 2.</p>
+          <textarea id="f-v2" data-key="v2" rows="10" aria-describedby="h-v2"></textarea>
         </div>
         <div class="field">
           <label for="f-v-changes">Vad ändrade ni mellan version 1 och version 2, och varför?</label>
@@ -242,6 +250,8 @@
           <dl id="test-types-help" class="glossary"></dl>
         </details>
 
+        <div class="card status-box" id="step1-box"></div>
+
         <div class="button-row">
           <button type="button" class="btn primary" id="btn-add-test">Lägg till testfall</button>
           <button type="button" class="btn" id="btn-copy-tests">Kopiera testprotokoll</button>
@@ -255,6 +265,34 @@
         </div>
 
         <div id="test-list"></div>
+
+        <div class="card">
+          <h3>Analys inför version 2</h3>
+          <div class="field">
+            <label for="f-analys-svaghet">En konkret svaghet eller begränsning ni upptäckt</label>
+            <p class="hint" id="h-analys-svaghet">Om ni inte hittat något fel: beskriv en undersökt begränsning, pröva svårare fall och motivera en relevant utveckling.</p>
+            <textarea id="f-analys-svaghet" data-key="analys_svaghet" rows="4" aria-describedby="h-analys-svaghet"></textarea>
+          </div>
+          <div class="field">
+            <label for="f-analys-andring">Vilken ändring vill ni pröva, och varför tror ni att den kan hjälpa?</label>
+            <textarea id="f-analys-andring" data-key="analys_andring" rows="4"></textarea>
+          </div>
+        </div>
+
+        <div class="card status-box" id="step2-box"></div>
+
+        <h3>Omtester med instruktion version 2</h3>
+        <p class="hint" id="h-retests">Varje omtest hänvisar till ett av de sex ursprungliga testfallen, anger promptversion och vilken elev som är ansvarig. Ni behöver minst två omtester totalt, minst ett per elev. De ursprungliga testfallen och deras resultat ändras inte av omtesterna.</p>
+        <div class="button-row">
+          <button type="button" class="btn primary" id="btn-add-retest">Lägg till omtest</button>
+        </div>
+        <div id="retest-list"></div>
+
+        <div class="field">
+          <label for="f-jamforelse">Jämförelse mellan version 1 och version 2</label>
+          <p class="hint" id="h-jamforelse">Vad blev bättre, sämre eller oförändrat mellan version 1 och version 2? Motivera med resultat från era omtester.</p>
+          <textarea id="f-jamforelse" data-key="analys_jamforelse" rows="6" aria-describedby="h-jamforelse"></textarea>
+        </div>
       </section>
 
       <!-- 7. LOGGBOK -->
@@ -319,9 +357,12 @@
         <p><progress id="check-progress" max="12" value="0" aria-labelledby="check-progress-text"></progress></p>
         <p id="check-progress-text"><strong>0 av 12 punkter avbockade</strong></p>
 
+        <div class="card status-box" id="step3-box"></div>
+
         <div class="card">
           <h3>Exportera</h3>
           <p>Rapporten är en läsbar Markdown-fil med gruppens fält och testfall. Loggbok och reflektion finns i varje elevs eget arbetsdokument och ingår inte i rapporten. JSON-filen är en säkerhetskopia som du kan importera igen. Ladda upp filerna i Google Classroom.</p>
+          <p class="warning" role="note" id="export-lock-notice" hidden></p>
           <div class="button-row">
             <button type="button" class="btn primary" id="btn-export-report">Exportera komplett arbetsrapport</button>
           </div>
@@ -338,6 +379,24 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <dialog id="approval-dialog" class="approval-dialog" aria-labelledby="appr-title" aria-describedby="appr-desc appr-requirements">
+    <form id="approval-form">
+      <h2 id="appr-title">Avstämning</h2>
+      <p id="appr-desc"></p>
+      <ul id="appr-requirements" class="req-list"></ul>
+      <div class="field">
+        <label for="appr-code">Lärarkod</label>
+        <input type="password" id="appr-code" name="appr-code" autocomplete="off" inputmode="numeric">
+        <p id="appr-error" class="warning" role="alert" hidden></p>
+      </div>
+      <div class="button-row">
+        <button type="submit" class="btn primary" id="appr-submit">Godkänn och öppna nästa steg</button>
+        <button type="button" class="btn" id="appr-cancel">Avbryt</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="app.js"></script>
 </body>
 </html>

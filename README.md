@@ -42,6 +42,16 @@ Eleverna ska exportera innan de byter webbläsare eller dator och lämna in file
 - **Elevens arbete:** be eleven importera en äldre JSON-fil med **Importera arbete**. Be eleverna spara filer med datum, till exempel efter varje lektion. Google Classroom sparar tidigare inlämningar.
 - **Webbplatsen:** om repositoryt ligger på GitHub kan du gå till **Commits**, välja en tidigare commit och återställa (`git revert <commit>`) eller checka ut den. Pages publicerar om automatiskt.
 
+## Lärargodkännanden (tre avstämningar)
+
+Webbplatsen har tre inbyggda avstämningar där läraren skriver in en kod för att öppna nästa arbetssteg (analys och testbedömning efter avstämning 1, instruktion version 2 och omtester efter avstämning 2, den slutgiltiga arbetsrapporten efter avstämning 3).
+
+**Detta är ett pedagogiskt stöd i webbläsaren, inte ett säkert behörighetssystem.** Koden ligger i klartext i `app.js` (konstanten `TEACHER_CODE` högst upp i filen) och kan läsas eller kringgås av vem som helst som öppnar webbläsarens utvecklarverktyg, redigerar `localStorage` direkt eller sparar en egen HTML-fil. Spärrarna kan inte hindra elever från att testa i ett externt AI-verktyg eller manipulera klientkoden. De är till för att skapa ett naturligt tillfälle för läraren att kontrollera förståelse, inte för att säkra data.
+
+Byt koden genom att ändra `TEACHER_CODE` i `app.js` och publicera om sidan. Dela koden med lärare via en privat kanal (till exempel muntligt eller i ett internt dokument), skriv aldrig koden i det här repositoryt eller i någon offentlig lärarhandledning, eftersom sidan och koden i `app.js` är synliga för alla som besöker den publicerade webbplatsen.
+
+Godkännanden, historik och den ögonblicksbild som sparas vid avstämning 1 ligger i samma `localStorage`-post och JSON-export som resten av elevens arbete. En export gjord innan slutgodkännandet innehåller alltså även låsta delar, vilket är avsiktligt så att säkerhetskopior alltid är fullständiga.
+
 ## Ingen API-nyckel i repositoryt
 
 Webbplatsen behöver ingen API-nyckel, inloggning, databas eller server. **Lägg aldrig någon API-nyckel, något lösenord eller några personuppgifter i repositoryt.** Elever ska heller inte skriva riktiga personuppgifter i faktaunderlaget.
