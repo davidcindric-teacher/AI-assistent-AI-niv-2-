@@ -1,0 +1,8 @@
+# Testartefakter från webbläsarautomation (skärmdumpar, loggar, sidträd)
+.playwright-mcp/
+
+# Elevernas exporterade arbetsfiler (säkerhetskopior) ska inte hamna i repot av misstag
+*.json
+
+# macOS
+.DS_Store
