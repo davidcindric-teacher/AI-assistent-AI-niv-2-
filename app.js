@@ -183,26 +183,13 @@
   function v2Locked() { return !(step1Approved() && step2Approved()); }
   function exportLocked() { return !step3Approved(); }
 
-  function ownerCounts(list, key) {
-    var counts = {};
-    list.forEach(function (item) {
-      var o = (item[key || 'owner'] || '').trim().toLowerCase();
-      if (o) counts[o] = (counts[o] || 0) + 1;
-    });
-    return counts;
-  }
-
   function step1Requirements() {
     var six = state.tests.slice(0, 6);
     var factsOk = val('facts').trim().length >= 200;
-    var sixOk = state.tests.length >= 6 && six.every(function (t) { return t.q.trim() !== '' && t.crit.trim() !== '' && t.owner.trim() !== ''; });
-    var counts = ownerCounts(six);
-    var names = Object.keys(counts);
-    var distOk = sixOk && names.length >= 2 && names.every(function (n) { return counts[n] >= 3; });
+    var sixOk = state.tests.length >= 6 && six.every(function (t) { return t.q.trim() !== '' && t.crit.trim() !== ''; });
     return [
       { label: 'Faktaunderlaget är ifyllt (minst 200 tecken).', ok: factsOk },
-      { label: 'Minst sex testfall med fråga, förväntat svar och ansvarig elev ifyllda.', ok: sixOk },
-      { label: 'Minst två elever, var och en ansvarig för minst tre av de sex första testfallen.', ok: distOk }
+      { label: 'Minst sex testfall med fråga och förväntat svar ifyllda.', ok: sixOk }
     ];
   }
 
@@ -217,15 +204,14 @@
   function step3Requirements() {
     var rts = state.retests;
     var filledOk = rts.length >= 2 && rts.every(function (r) {
-      return r.ref && r.promptVersion.trim() !== '' && r.owner.trim() !== '' && r.a.trim() !== '' && r.result !== '';
+      return r.ref && r.promptVersion.trim() !== '' && r.a.trim() !== '' && r.result !== '';
     });
-    var perStudentOk = Object.keys(ownerCounts(rts)).length >= 2;
     var techOk = TECH.every(function (t) { return has('tech_' + t.id + '_mode'); }) &&
       TECH.filter(function (t) { return has('tech_' + t.id + '_why'); }).length >= 3;
     return [
       { label: 'Avstämning 1 och 2 är godkända.', ok: step1Approved() && step2Approved() },
       { label: 'Instruktion version 2 är ifylld.', ok: has('v2') },
-      { label: 'Minst två omtester ifyllda, minst ett per elev.', ok: filledOk && perStudentOk },
+      { label: 'Minst två omtester ifyllda.', ok: filledOk },
       { label: 'Jämförelsen mellan version 1 och version 2 är skriven.', ok: has('analys_jamforelse') },
       { label: 'Systemskissen har minst tre motiverade tekniker.', ok: techOk }
     ];
@@ -525,8 +511,6 @@
         h += '<button type="button" class="btn danger small" data-act="remove-test" data-i="' + i + '">Ta bort testfall ' + (i + 1) + '</button>';
       }
       h += '</header><div class="fields">';
-      h += '<div class="field"><label for="' + p + 'owner">Ansvarig elev</label><p class="hint" id="' + p + 'owner-h">Namnet eller initialerna för den elev som ansvarar för testfallet.</p>' +
-        '<input type="text" id="' + p + 'owner" data-t="owner" aria-describedby="' + p + 'owner-h" value="' + esc(t.owner) + '"></div>';
       h += '<div class="field"><label for="' + p + 'type">Typ av test</label><p class="hint" id="' + p + 'help">' + esc(typeHelp(t.type)) + '</p>' +
         '<select id="' + p + 'type" data-t="type" aria-describedby="' + p + 'help">';
       TEST_TYPES.forEach(function (tt) { h += '<option value="' + tt.id + '"' + (tt.id === t.type ? ' selected' : '') + '>' + esc(tt.name) + '</option>'; });
@@ -583,7 +567,6 @@
       if (r.ref && !orig) h += '<p class="warning" role="note">Det ursprungliga testfallet kunde inte hittas.</p>';
       else if (orig) h += '<p class="hint"><strong>Fråga (från avstämning 1):</strong> ' + esc(orig.data.q || '(inte ifylld)') + '<br><strong>Förväntat svar:</strong> ' + esc(orig.data.crit || '(inte ifyllt)') + '</p>';
       h += '<div class="field"><label for="' + p + 'pv">Promptversion som testades</label><input type="text" id="' + p + 'pv" data-rt="promptVersion" value="' + esc(r.promptVersion) + '"></div>';
-      h += '<div class="field"><label for="' + p + 'owner">Ansvarig elev</label><input type="text" id="' + p + 'owner" data-rt="owner" value="' + esc(r.owner) + '"></div>';
       h += rtarea(p + 'a', 'a', 'AI-assistentens svar', r.a, 4, 'Klistra in svaret från AI-verktyget.');
       h += '<div class="field"><label for="' + p + 'result">Godkänt, delvis godkänt eller inte godkänt</label><select id="' + p + 'result" data-rt="result">';
       RESULTS.forEach(function (rr) { h += '<option value="' + rr[0] + '"' + (rr[0] === r.result ? ' selected' : '') + '>' + esc(rr[1]) + '</option>'; });
@@ -613,7 +596,6 @@
     state.tests.forEach(function (t, i) {
       out.push(sub + ' Testfall ' + (i + 1) + ': ' + typeName(t.type));
       out.push('');
-      out.push('- **Ansvarig elev:** ' + oneLine(t.owner));
       out.push('- **Fråga eller instruktion:** ' + oneLine(t.q));
       out.push('- **AI-assistentens svar:** ' + oneLine(t.a));
       out.push('- **Förväntat svar eller bedömningskriterium:** ' + oneLine(t.crit));
@@ -644,7 +626,6 @@
       entries.forEach(function (o) { if (o.id === r.ref) orig = o; });
       out.push('### Omtest ' + (i + 1) + (orig ? ' (avser testfall ' + (orig.index + 1) + ')' : ' (ursprungligt testfall saknas)'));
       out.push('');
-      out.push('- **Ansvarig elev:** ' + oneLine(r.owner));
       out.push('- **Promptversion:** ' + oneLine(r.promptVersion));
       if (orig) {
         out.push('- **Ursprunglig fråga:** ' + oneLine(orig.data.q));
