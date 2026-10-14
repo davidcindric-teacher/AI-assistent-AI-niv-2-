@@ -202,16 +202,15 @@
   }
 
   function step3Requirements() {
-    var rts = state.retests;
-    var filledOk = rts.length >= 2 && rts.every(function (r) {
+    var filledCount = state.retests.filter(function (r) {
       return r.ref && r.promptVersion.trim() !== '' && r.a.trim() !== '' && r.result !== '';
-    });
+    }).length;
     var techOk = TECH.every(function (t) { return has('tech_' + t.id + '_mode'); }) &&
       TECH.filter(function (t) { return has('tech_' + t.id + '_why'); }).length >= 3;
     return [
       { label: 'Avstämning 1 och 2 är godkända.', ok: step1Approved() && step2Approved() },
       { label: 'Instruktion version 2 är ifylld.', ok: has('v2') },
-      { label: 'Minst två omtester ifyllda.', ok: filledOk },
+      { label: 'Minst två omtester ifyllda.', ok: filledCount >= 2 },
       { label: 'Jämförelsen mellan version 1 och version 2 är skriven.', ok: has('analys_jamforelse') },
       { label: 'Systemskissen har minst tre motiverade tekniker.', ok: techOk }
     ];
