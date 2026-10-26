@@ -1003,6 +1003,122 @@
     toast('Allt lokalt arbete är rensat.');
   }
 
+  /* ---------- Lärarvy: granska exporterade elevarbeten ----------
+     Läser elevernas JSON-filer utan att röra arbetet som är sparat i webbläsaren.
+     Visar bara fält eleverna själva fyllt i, med frågan som texten svarar på. */
+
+  function reviewText(fields, key) {
+    var v = fields[key];
+    if (typeof v !== 'string') return '';
+    if (OPTIONS[key]) return v ? (OPTIONS[key][v] || v) : '';
+    return v.trim();
+  }
+
+  function reviewList(items) {
+    items = items.filter(function (it) { return it[1]; });
+    if (!items.length) return '';
+    return '<dl class="review-list">' + items.map(function (it) {
+      return '<dt>' + esc(it[0]) + '</dt><dd>' + esc(it[1]) + '</dd>';
+    }).join('') + '</dl>';
+  }
+
+  function reviewSection(title, body) {
+    return body ? '<h4>' + esc(title) + '</h4>' + body : '';
+  }
+
+  function reviewExtra(summary, text) {
+    text = String(text || '').trim();
+    return text ? '<details><summary>' + esc(summary) + '</summary><dl class="review-list"><dd>' + esc(text) + '</dd></dl></details>' : '';
+  }
+
+  function reviewHtml(fileName, d, exportedAt) {
+    var f = d.fields;
+    function keyItems(keys) { return keys.map(function (k) { return [LABELS[k] || k, reviewText(f, k)]; }); }
+
+    var title = reviewText(f, 'plan_namn') || 'Namnlöst projekt';
+    var members = reviewText(f, 'plan_medlemmar');
+    var h = '<details class="card review-card"><summary>' + esc(title) + (members ? ' · ' + esc(members) : '') + '</summary>';
+    h += '<p class="hint">Fil: ' + esc(fileName) + (fmtDateTime(exportedAt) ? '. Exporterad ' + esc(fmtDateTime(exportedAt)) : '') + '.</p>';
+
+    h += reviewSection('Planering', reviewList(keyItems(PLAN.map(function (p) { return p.key; }))));
+
+    var facts = reviewText(f, 'facts');
+    if (facts === EXAMPLE_FACTS.trim()) h += reviewSection('Faktaunderlag', '<p class="warning">Gruppen använder webbplatsens exempelunderlag, inte en egen text.</p>');
+    else h += reviewSection('Faktaunderlag', reviewList([[LABELS.facts, facts]]));
+
+    h += reviewSection('Instruktionens byggstenar', reviewList(keyItems(BLOCKS.map(function (b) { return b.key; }).concat(['v_changes']))));
+
+    var tests = d.tests.map(function (t, i) {
+      var body = reviewList([
+        ['Fråga eller instruktion', t.q.trim()],
+        ['Förväntat svar eller bedömningskriterium', t.crit.trim()],
+        ['Gruppens bedömning', t.result ? RESULT_LABEL[t.result] || t.result : ''],
+        ['Vilket fel upptäcktes?', t.err.trim()],
+        ['Hur ska lösningen förbättras?', t.fix.trim()]
+      ]);
+      return body ? '<h5>Testfall ' + (i + 1) + ': ' + esc(typeName(t.type)) + '</h5>' + body + reviewExtra('Visa AI:ns svar (inklistrat, inte elevens text)', t.a) : '';
+    }).join('');
+    h += reviewSection('Testfall (version 1)', tests);
+
+    h += reviewSection('Analys inför version 2', reviewList(keyItems(['analys_svaghet', 'analys_andring'])));
+
+    var snap = d.approvals.step1.snapshot;
+    var retests = d.retests.map(function (r, i) {
+      var idx = snap ? snap.originalIds.indexOf(r.ref) : -1;
+      var orig = idx > -1 ? snap.tests[idx] : null;
+      var body = reviewList([
+        ['Gruppens bedömning', r.result ? RESULT_LABEL[r.result] || r.result : ''],
+        ['Vilket fel upptäcktes?', r.err.trim()],
+        ['Hur ska lösningen förbättras?', r.fix.trim()]
+      ]);
+      if (!body) return '';
+      var head = '<h5>Omtest ' + (i + 1) + (idx > -1 ? ' (avser testfall ' + (idx + 1) + ')' : '') + ', promptversion ' + esc(r.promptVersion.trim() || '?') + '</h5>';
+      if (orig && orig.q.trim()) head += '<p class="hint"><strong>Ursprunglig fråga:</strong> ' + esc(orig.q.trim()) + '</p>';
+      return head + body + reviewExtra('Visa AI:ns svar (inklistrat, inte elevens text)', r.a);
+    }).join('');
+    h += reviewSection('Omtester (version 2)', retests);
+    h += reviewSection('Jämförelse mellan versionerna', reviewList(keyItems(['analys_jamforelse'])));
+
+    var techKeys = [];
+    TECH.forEach(function (t) { techKeys.push('tech_' + t.id + '_mode', 'tech_' + t.id + '_why'); });
+    h += reviewSection('Systemskiss', reviewList(keyItems(techKeys.concat(['tech_skiss']))));
+
+    var versions = reviewExtra('Instruktion version 1 (sammansatt av byggstenarna)', reviewText(f, 'v1')) +
+      reviewExtra('Instruktion version 2 (sammansatt av byggstenarna)', reviewText(f, 'v2'));
+    h += reviewSection('Instruktionsversioner', versions);
+
+    return h + '</details>';
+  }
+
+  function reviewFiles(files) {
+    var results = new Array(files.length);
+    var left = files.length;
+    files.forEach(function (file, i) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var raw = null;
+        try { raw = JSON.parse(String(reader.result)); } catch (e) { raw = null; }
+        var data = sanitize(raw);
+        results[i] = data ? reviewHtml(file.name, data, raw.exportedAt) : null;
+        if (--left === 0) showReview(files, results);
+      };
+      reader.onerror = function () { results[i] = null; if (--left === 0) showReview(files, results); };
+      reader.readAsText(file);
+    });
+  }
+
+  function showReview(files, results) {
+    var bad = files.filter(function (f, i) { return !results[i]; }).map(function (f) { return f.name; });
+    var ok = results.filter(Boolean);
+    var h = '';
+    if (bad.length) h += '<p class="warning" role="note">Kunde inte läsas (inte en säkerhetskopia från webbplatsen): ' + esc(bad.join(', ')) + '</p>';
+    h += ok.join('');
+    $('#review-output').innerHTML = h;
+    if (ok.length === 1) $('#review-output .review-card').open = true;
+    $('#btn-review-clear').hidden = !h;
+    toast(ok.length + (ok.length === 1 ? ' elevarbete inläst.' : ' elevarbeten inlästa.') + (bad.length ? ' ' + bad.length + ' fil(er) kunde inte läsas.' : ''));
+  }
+
   /* ---------- Navigering ---------- */
 
   var initialRoute = true;
@@ -1198,6 +1314,18 @@
       setTimeout(function () { exportJson(false); }, 300);
       markExported();
       toast('Rapporten (.md) och säkerhetskopian (.json) laddas ner.');
+    });
+
+    $('#btn-review-upload').addEventListener('click', function () { $('#file-review').click(); });
+    $('#file-review').addEventListener('change', function (e) {
+      var files = Array.prototype.slice.call(e.target.files || []);
+      if (files.length) reviewFiles(files);
+      e.target.value = '';
+    });
+    $('#btn-review-clear').addEventListener('click', function () {
+      $('#review-output').innerHTML = '';
+      $('#btn-review-clear').hidden = true;
+      $('#btn-review-upload').focus();
     });
 
     window.addEventListener('hashchange', route);

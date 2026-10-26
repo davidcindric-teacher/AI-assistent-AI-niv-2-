@@ -369,6 +369,18 @@
           <p class="hint">Knappen laddar ner två filer: en .md-rapport och en .json-säkerhetskopia. Om webbläsaren frågar om den får ladda ner flera filer, svara ja.</p>
         </div>
         <p class="notice">Kom ihåg: Gruppens webbplats avgör inte ensam ditt betyg. Din individuella loggbok och reflektion i arbetsdokumentet, samt den muntliga avstämningen, är viktiga.</p>
+
+        <div class="card">
+          <h3>För läraren: granska elevarbeten</h3>
+          <p>Ladda upp en eller flera JSON-filer (säkerhetskopior) som eleverna lämnat in. Du får se enbart det eleverna själva skrivit, tillsammans med frågan som texten svarar på. Tomma fält visas inte.</p>
+          <p class="hint">Filerna läses bara här i webbläsaren. Arbetet som är sparat i den här webbläsaren påverkas inte.</p>
+          <div class="button-row">
+            <button type="button" class="btn primary" id="btn-review-upload">Ladda upp elevarbeten</button>
+            <button type="button" class="btn" id="btn-review-clear" hidden>Stäng granskningen</button>
+          </div>
+          <input type="file" id="file-review" accept=".json,application/json" multiple hidden>
+        </div>
+        <div id="review-output" aria-live="polite"></div>
       </section>
 
       <div class="pager" id="pager">

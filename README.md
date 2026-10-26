@@ -37,6 +37,10 @@ Sidhuvudet visar när senaste autosparning skedde och om det finns ändringar so
 
 Eleverna ska exportera innan de byter webbläsare eller dator och lämna in filerna i Google Classroom.
 
+## Granska elevarbeten (för läraren)
+
+Längst ner under **Inlämning** finns **Ladda upp elevarbeten**. Välj en eller flera av elevernas JSON-filer. Varje grupp visas i en egen ruta med enbart det eleverna själva skrivit, under frågan som texten svarar på. Tomma fält visas inte. AI-svar som eleverna klistrat in och de sammansatta instruktionsversionerna ligger i hopfällda rutor. Filerna läses bara i webbläsaren och påverkar inte det arbete som är sparat där.
+
 ## Återställa en tidigare version (för läraren)
 
 - **Elevens arbete:** be eleven importera en äldre JSON-fil med **Importera arbete**. Be eleverna spara filer med datum, till exempel efter varje lektion. Google Classroom sparar tidigare inlämningar.

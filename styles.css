@@ -156,6 +156,16 @@ details.card[open] > summary { margin-bottom: .75rem; }
 
 .pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 3rem; }
 
+/* Lärarvy: granskning av elevarbeten */
+.review-card > summary { font-size: 1.15rem; }
+.review-card h4 { margin: 1.75rem 0 .5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.review-card h5 { font-size: 1rem; color: var(--green-dark); margin: 1.25rem 0 .5rem; }
+.review-list { margin: 0 0 1rem; }
+.review-list dt { font-weight: 600; color: var(--muted); font-size: .95rem; margin-top: .9rem; }
+.review-list dd { margin: .2rem 0 0; padding: .6rem .85rem; background: var(--tint); border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; }
+.review-card details { margin: .5rem 0 1rem; }
+.review-card details > summary { cursor: pointer; color: var(--green-dark); font-size: .95rem; }
+
 /* Avstämningar */
 .status-box h3 { margin-top: 0; }
 .approval-overview { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
