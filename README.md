@@ -39,7 +39,7 @@ Eleverna ska exportera innan de byter webbläsare eller dator och lämna in file
 
 ## Granska elevarbeten (för läraren)
 
-Längst ner under **Inlämning** finns **Ladda upp elevarbeten**. Välj en eller flera av elevernas JSON-filer. Varje grupp visas i en egen ruta med enbart det eleverna själva skrivit, under frågan som texten svarar på. Tomma fält visas inte. AI-svar som eleverna klistrat in och de sammansatta instruktionsversionerna ligger i hopfällda rutor. Filerna läses bara i webbläsaren och påverkar inte det arbete som är sparat där.
+Längst ner under **Inlämning** finns **Ladda upp elevarbeten**. Välj en eller flera av elevernas JSON-filer. Varje grupp visas i en egen ruta med enbart det eleverna själva skrivit, under frågan som texten svarar på. Tomma fält visas inte. AI-svar som eleverna klistrat in och de sammansatta instruktionsversionerna ligger i hopfällda rutor. Överst i varje grupps ruta finns en textruta med allt samlat som fråga följt av svar, och knappen **Kopiera all text**. Filerna läses bara i webbläsaren och påverkar inte det arbete som är sparat där.
 
 ## Återställa en tidigare version (för läraren)
 

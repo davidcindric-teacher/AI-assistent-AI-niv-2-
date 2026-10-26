@@ -1090,6 +1090,35 @@
     return h + '</details>';
   }
 
+  /* Samma innehåll som visas i rutan, som ren text: fråga följt av svar. */
+  function reviewPlainText(card) {
+    var head = card.querySelector('summary');
+    var out = [head.textContent.trim()];
+    $$('h4, h5, p, dt, dd, details > summary', card).forEach(function (el) {
+      if (el === head) return;
+      var t = el.textContent.trim();
+      if (el.tagName === 'H4') out.push('', '== ' + t + ' ==');
+      else if (el.tagName === 'H5') out.push('', '-- ' + t + ' --');
+      else if (el.tagName === 'SUMMARY') out.push('', t.replace(/^Visa /, ''));
+      else if (el.tagName === 'DD') out.push(t);
+      else out.push('', t);
+    });
+    return out.join('\n') + '\n';
+  }
+
+  function addReviewCopyBoxes() {
+    $$('#review-output .review-card').forEach(function (card, i) {
+      var id = 'review-text-' + i;
+      var box = document.createElement('div');
+      box.className = 'field';
+      box.innerHTML = '<label for="' + id + '">All text i en ruta (fråga följt av svar)</label>' +
+        '<textarea id="' + id + '" class="review-text" rows="10" readonly></textarea>' +
+        '<div class="button-row"><button type="button" class="btn primary" data-act="review-copy" data-target="' + id + '">Kopiera all text</button></div>';
+      $('textarea', box).value = reviewPlainText(card);
+      card.querySelector('summary').insertAdjacentElement('afterend', box);
+    });
+  }
+
   function reviewFiles(files) {
     var results = new Array(files.length);
     var left = files.length;
@@ -1114,6 +1143,7 @@
     if (bad.length) h += '<p class="warning" role="note">Kunde inte läsas (inte en säkerhetskopia från webbplatsen): ' + esc(bad.join(', ')) + '</p>';
     h += ok.join('');
     $('#review-output').innerHTML = h;
+    addReviewCopyBoxes();
     if (ok.length === 1) $('#review-output .review-card').open = true;
     $('#btn-review-clear').hidden = !h;
     toast(ok.length + (ok.length === 1 ? ' elevarbete inläst.' : ' elevarbeten inlästa.') + (bad.length ? ' ' + bad.length + ' fil(er) kunde inte läsas.' : ''));
@@ -1206,6 +1236,8 @@
             markChanged();
             toast('Omtestet är borttaget.');
           }
+        } else if (act === 'review-copy') {
+          copyText($('#' + b.getAttribute('data-target')).value, 'All text är kopierad.');
         } else if (act === 'approve' || act === 'revoke') {
           openApprovalDialog(parseInt(b.getAttribute('data-step'), 10), act, b);
         }
